@@ -1,0 +1,192 @@
+---
+title: "Stats exam"
+author: "Aman Kumar"
+date: "May 5, 2020"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(graphics)
+library(ggplot2)
+library(tidyverse)
+library(knitr)
+library(gridExtra)
+```
+
+
+```{r}
+library(spotifyr)
+Sys.setenv(SPOTIFY_CLIENT_ID = "b6eb08407bab41b4b3f8f5bb48a0f8f0")
+Sys.setenv(SPOTIFY_CLIENT_SECRET = "73efc29aa9b442fdbc83019dfc8fc0ed")
+access_token <- get_spotify_access_token()
+#mmfull <- get_artist_audio_features("modest mouse")
+
+```
+
+
+```{r}
+df <- get_artist_audio_features("arijit singh")
+```
+
+```{r}
+pairs(df[c('duration_ms', 'valence', 'danceability', 'energy', 'acousticness', 'loudness', 'speechiness', 'instrumentalness', 'liveness')])
+
+```
+
+
+```{r}
+cor(df[c('duration_ms', 'valence', 'danceability', 'energy', 'acousticness', 'loudness', 'speechiness', 'instrumentalness', 'liveness')])
+
+```
+
+Loudness and energy are the most linearly correlated variables
+
+```{r}
+ggplot(df, aes(x = acousticness, y = ..density.., fill = 'red')) +
+geom_density() +
+ggtitle("Distribution of acousticness")  
+```
+
+```{r}
+ggplot(df, aes(x = energy, y = ..density.., fill = 'red')) +
+geom_density() +
+ggtitle("Distribution of energy")  
+```
+
+Normality of energy
+
+```{r}
+ggplot(df, aes(sample = energy)) + stat_qq() + stat_qq_line()
+ggtitle("Normal QQ plots for energy")
+```
+
+Normality of acousticness
+
+```{r}
+ggplot(df, aes(sample = acousticness)) + stat_qq() + stat_qq_line()
+ggtitle("Normal QQ plots for acousticness")
+```
+
+
+```{r}
+CI_energy = t.test(df$energy,conf.level = 0.99)$conf.int
+CI_acousticness = t.test(df$acousticness,conf.level = 0.99)$conf.int
+
+print(CI_energy)
+print(CI_acousticness)
+```
+
+Q2)
+
+2 sample Hypothesis test on Energy
+
+```{r}
+sam.means = aggregate(formula = energy ~ mode_name, data = df, FUN = mean)
+
+ggplot(df, aes(x = energy, y = ..density.., color = mode_name, fill = mode_name)) +
+geom_density(alpha = 0.5) +
+geom_vline(data = sam.means, aes(xintercept = energy, color = mode_name)) +
+ggtitle("Distribution of Energy over different mode names")
+
+```
+
+  
+```{r}
+#pairwise.t.test(df$energy, df$mode_name, p.adjust.method = 'bonferroni')
+model.lm = lm(energy ~ mode_name, data = df)
+anova(model.lm)
+```
+
+The results are not significant as expected since both the group's means could be equal. The same information is conveyed by the distribution plot. H0 = mu1= mu2. Not enough evidence to reject this hypothesis.
+
+  Q3)
+  
+pairwise on acousticness on grouping with album name.
+
+```{r}
+loud.means = aggregate(formula = acousticness ~ album_name, data = df, FUN = mean)
+
+ggplot(df, aes(x = acousticness, y = ..density.., color = album_name, fill = album_name)) +
+geom_density(alpha = 0.5) +
+geom_vline(data = loud.means, aes(xintercept = acousticness, color = album_name)) +
+ggtitle("Distribution of acousticness over different album names")
+
+```
+
+```{r}
+model.lm = lm(acousticness ~ album_name, data = df)
+anova(model.lm)
+```
+
+The annova test is significant hence, atleast any one group mean is different.
+Therefore, digging in deeper to check the pairs of groups which have similar means and which don't.
+
+
+```{r}
+pairwise.t.test(df$acousticness, df$album_name, p.adjust.method = 'bonferroni')
+```
+
+There are several albums with similar loudness mean values but some album groups have different means.
+
+  Q4) Linear Regression
+  
+acousticness is chosen as the independent variable and enrgy of the song as dependent variable. Hence acousticness is predictor and energy as response variable.
+
+```{r}
+ggplot(df, aes(x = acousticness, y = energy)) +
+  geom_point() +
+  geom_smooth(method = 'lm', se = FALSE) +
+  ggtitle(" Relation between acousticness and energy")
+
+print(cor(df$acousticness, df$energy))
+```
+
+  Building a linear regression model as above with acousticness as the independent variable and energy of the song as dependent variable.
+  
+```{r}
+regmod.lm = lm(energy ~ acousticness, df)
+
+summary(regmod.lm)
+```
+
+  energy = 0.77617 - 0.39386*acousticness
+  
+The y-intercept doesn't have such a physical significance apart from the fact that it acts as a bias for the line to fit the data well. The slope says energy is dependent with a factor of 0.4007 on loudness i.e. with increase in loudness there is an increase in energy and vice-versa. This shows positive correlation between both the variables. Also, the slope and y-intercept is statistically significant since its p-value is quite less.
+
+The actual slope value doesn't make that much sense because loudness and energy are not in the smae scale. For the slope values to make sense both the variables should be scaled prior to fitting in the model (like scaling both the variables to the range between 0 to 1).
+
+c)
+
+Ho = The mean of predicted values and actual values is same.
+Ha = The mean of bothe groups is not same.
+
+```{r}
+t.test(fitted(regmod.lm), df$energy, conf.level = 0.99)
+
+```
+
+d)
+
+```{r}
+## generating test points as specific percentiles of train data
+test_points = quantile(df$acousticness, probs = c(0.2, 0.4, 0.6, 0.8))
+
+# predicting energry values using those loudness data points
+predict(regmod.lm, data.frame(acousticness = test_points))
+```
+
+e) Regression assumptions
+
+```{r}
+# getting residuals
+errs= residuals(regmod.lm)
+
+## normality of residulas ##
+ggplot(df, aes(sample = errs)) + stat_qq() + stat_qq_line()
+
+## residuals plot ## 
+
+ggplot(df, aes(fitted(regmod.lm), errs)) + geom_point() + geom_hline(yintercept= 0) + 
+  geom_smooth(col = 'red', se = FALSE)
+```
